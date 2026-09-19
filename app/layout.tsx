@@ -33,7 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </header>
         <main className="mx-auto max-w-7xl px-4 pb-24 pt-6">{children}</main>
         <footer className="mx-auto max-w-7xl px-4 pb-10 text-xs text-ink-500">
-          Independent concept prototype for a case study. Not affiliated with or endorsed by MakeMyTrip. Prices shown are indicative; live prices come from the booking partner.
+          Independent concept prototype for a case study. Not affiliated with or endorsed by MakeMyTrip. Prices shown are indicative; live prices come from the booking partner. Build v0.3.
         </footer>
       </body>
     </html>
