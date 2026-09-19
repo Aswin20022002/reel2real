@@ -2,6 +2,7 @@
 import { ChevronDown, FileAudio, Link2, Loader2, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { extractAudioChunks } from "@/lib/audio";
 import { ORIGINS, SAMPLES } from "@/lib/catalog";
 import { addDays, buildTripFromAnalysis, isoDate, setDayStart } from "@/lib/itinerary";
 import { pushTrip, saveReel, setMeStored } from "@/lib/store";
@@ -31,16 +32,40 @@ export default function ReelInput({ prefill }: { prefill?: { url: string; captio
   useEffect(() => { fetch("/api/analyze").then((r) => r.json()).then((j) => setAi(!!j.aiEnabled)).catch(() => setAi(false)); }, []);
   useEffect(() => { if (prefill) { setUrl(prefill.url); setCaption(prefill.caption ?? ""); } }, [prefill]);
 
+  const [tmsg, setTmsg] = useState("");
+  async function post(blob: Blob, name: string): Promise<string> {
+    const fd = new FormData(); fd.append("file", blob, name);
+    const r = await fetch("/api/transcribe", { method: "POST", body: fd });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || "Transcription failed");
+    return String(j.transcript ?? "");
+  }
   async function onFile(f: File | undefined) {
     if (!f) return;
-    setTbusy(true); setErr("");
-    const fd = new FormData(); fd.append("file", f);
+    if (f.size > 250 * 1024 * 1024) { setErr("That file is over 250 MB. Trim the clip and try again."); return; }
+    setTbusy(true); setErr(""); setTranscript("");
     try {
-      const r = await fetch("/api/transcribe", { method: "POST", body: fd });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || "Transcription failed");
-      setTranscript(j.transcript); setMore(true);
-    } catch (e) { setErr((e as Error).message); } finally { setTbusy(false); }
+      let parts: string[] = [];
+      try {
+        setTmsg("Extracting the audio in your browser...");
+        const { chunks, truncated, seconds } = await extractAudioChunks(f);
+        for (let i = 0; i < chunks.length; i++) {
+          setTmsg(`Transcribing part ${i + 1} of ${chunks.length}...`);
+          parts.push(await post(chunks[i], `part${i + 1}.wav`));
+        }
+        if (truncated) setWarn([`Only the first ${Math.round(chunks.length * 1.5)} minutes of the ${Math.round(seconds / 60)}-minute video were read.`]);
+      } catch (inner) {
+        // some browsers can't decode certain files; small files can still go straight to the server
+        if (f.size <= 4 * 1024 * 1024 && !parts.length) { setTmsg("Transcribing..."); parts = [await post(f, f.name)]; }
+        else throw inner;
+      }
+      const text = parts.join(" ").trim();
+      if (!text) throw new Error("No speech was found in that file. If the places only appear as on-screen text, paste them into the caption box.");
+      setTranscript(text); setMore(true);
+    } catch (e) {
+      const m = (e as Error).message;
+      setErr(/decode|EncodingError|unable/i.test(m) ? "This browser couldn't read that video's audio. Try Chrome, or upload an audio-only file (m4a, mp3, wav)." : m);
+    } finally { setTbusy(false); setTmsg(""); }
   }
 
   async function submit(e?: React.FormEvent) {
@@ -103,9 +128,9 @@ export default function ReelInput({ prefill }: { prefill?: { url: string; captio
             <textarea id="cap" className="input min-h-24" value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Paste what the creator wrote, plus any place names people mention in comments" />
           </div>
           <div className="sm:col-span-2">
-            <label className="label">Or upload a short clip (up to 4 MB) and we'll transcribe the voice-over</label>
+            <label className="label">Or upload the downloaded reel (any size up to 250 MB): the audio is pulled out in your browser and transcribed</label>
             <label className={`btn-ghost cursor-pointer ${ai ? "" : "opacity-60"}`}>
-              {tbusy ? <Loader2 className="animate-spin" size={16} /> : <FileAudio size={16} />} {transcript ? "Transcript added" : "Choose video or audio"}
+              {tbusy ? <Loader2 className="animate-spin" size={16} /> : <FileAudio size={16} />} {tbusy ? tmsg || "Working..." : transcript ? "Transcript added, choose another" : "Choose video or audio"}
               <input type="file" accept="audio/*,video/*" className="sr-only" disabled={!ai || tbusy} onChange={(e) => onFile(e.target.files?.[0])} />
             </label>
             {ai === false && <p className="mt-1 text-xs text-ink-500">Needs an AI key on the server (see README). Until then, paste the caption instead.</p>}
