@@ -56,7 +56,7 @@ export default function ReelInput({ prefill }: { prefill?: { url: string; captio
       const a = j.analysis as Analysis;
       setWarn(a.warnings);
       if (a.needsInput || !a.places.length) {
-        setErr("I couldn't find places in this link. Paste the reel's caption (or upload a short clip) and try again. Instagram doesn't let apps read a reel's video directly.");
+        setErr(`I couldn't find places in this link. ${a.warnings.join(" ")} Paste the caption or description (or upload a short clip) and try again. Apps can't watch a video directly, so they need its text or audio.`);
         setMore(true);
         return;
       }
