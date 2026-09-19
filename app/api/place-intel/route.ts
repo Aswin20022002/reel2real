@@ -43,13 +43,29 @@ async function flickrRecent(name: string, lat: number, lng: number): Promise<Non
   } catch { return []; }
 }
 
-async function wikiInfo(title: string): Promise<{ img?: string; extract?: string }> {
+async function wikiSummary(title: string): Promise<{ img?: string; extract?: string; title?: string }> {
   try {
     const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, "_"))}`, { next: { revalidate: 86400 }, headers: { "User-Agent": "Reel2Real/0.1" } });
     if (!r.ok) return {};
     const j = await r.json();
-    return { img: j.originalimage?.source ?? j.thumbnail?.source, extract: j.extract };
+    if (j.type === "disambiguation") return {};
+    return { img: j.originalimage?.source ?? j.thumbnail?.source, extract: j.extract, title: j.title };
   } catch { return {}; }
+}
+
+/** Try the exact title first; if that has no photo, search Wikipedia using the name plus the area and use the best match. */
+async function wikiInfo(title: string, area = ""): Promise<{ img?: string; extract?: string }> {
+  const direct = await wikiSummary(title);
+  if (direct.img) return direct;
+  try {
+    const q = encodeURIComponent(`${title} ${area}`.trim());
+    const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${q}&srlimit=1&format=json&origin=*`, { next: { revalidate: 86400 }, headers: { "User-Agent": "Reel2Real/0.1" } });
+    if (r.ok) {
+      const hit = (await r.json())?.query?.search?.[0]?.title as string | undefined;
+      if (hit) { const found = await wikiSummary(hit); if (found.img || found.extract) return found; }
+    }
+  } catch { /* fall through */ }
+  return direct;
 }
 
 export async function GET(req: Request) {
@@ -99,7 +115,7 @@ export async function GET(req: Request) {
   if (recent.length) { out.recent = recent; out.recentSource = "Flickr"; }
 
   if (!out.photos.length && (wiki || name)) {
-    const w = await wikiInfo(wiki || name);
+    const w = await wikiInfo(wiki || name, area);
     if (w.img) out.photos.push({ url: w.img, credit: "Wikipedia / Wikimedia Commons" });
     out.summary = w.extract;
   }
