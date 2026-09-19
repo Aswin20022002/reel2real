@@ -1,6 +1,7 @@
 import { DESTINATIONS, findDestination, getDestination, matchPlaces, snapToCatalog } from "./catalog";
 import { llmConfigured, llmJSON } from "./llm";
 import type { Analysis, Category, Place, ReelSource } from "./types";
+import { fetchYouTube } from "./youtube";
 
 export function detectPlatform(url: string): ReelSource["platform"] {
   if (/instagram\.com|instagr\.am/i.test(url)) return "instagram";
@@ -73,16 +74,27 @@ Keep the order the creator mentions. Use best-known real coordinates. If no dest
 export async function analyzeReel(input: { url: string; caption?: string; transcript?: string }): Promise<Analysis> {
   const url = input.url.trim();
   const platform = detectPlatform(url);
-  const meta = await fetchMeta(url);
-  const caption = [input.caption, input.transcript].filter(Boolean).join("\n").trim();
-  const text = [meta.title, meta.author, caption, decodeURIComponent(url)].filter(Boolean).join("\n");
-  const reel: ReelSource = { url, platform, title: meta.title, author: meta.author, thumbnail: meta.thumbnail, caption: caption || undefined };
+  let meta = await fetchMeta(url);
+  let ytText = "";
   const warnings: string[] = [];
+  if (platform === "youtube") {
+    const yt = await fetchYouTube(url);
+    if (yt.title || yt.description || yt.transcript) {
+      meta = { title: yt.title ?? meta.title, author: yt.author ?? meta.author, thumbnail: yt.thumbnail ?? meta.thumbnail };
+      ytText = [yt.description, yt.transcript ? `Spoken in the video (${yt.lang ?? "captions"}): ${yt.transcript}` : ""].filter(Boolean).join("\n");
+      if (!yt.transcript) warnings.push("This video has no readable captions, so only its title and description were used.");
+    } else {
+      warnings.push("Couldn't read this YouTube video's description or captions from the server. Paste the description or upload a short clip.");
+    }
+  }
+  const caption = [input.caption, input.transcript, ytText].filter(Boolean).join("\n").trim();
+  const text = [meta.title, meta.author, caption, decodeURIComponent(url)].filter(Boolean).join("\n");
+  const reel: ReelSource = { url, platform, title: meta.title, author: meta.author, thumbnail: meta.thumbnail, caption: caption ? caption.slice(0, 4000) : undefined };
 
   let engine: Analysis["engine"] = "catalog";
   let llm: LlmOut | undefined;
   if (llmConfigured() && text.replace(/https?:\S+/g, "").trim().length > 20) {
-    try { llm = await llmJSON<LlmOut>(SYSTEM, `Reel text:\n${text.slice(0, 6000)}`); engine = "ai"; }
+    try { llm = await llmJSON<LlmOut>(SYSTEM, `Reel text:\n${text.slice(0, 9000)}`); engine = "ai"; }
     catch (e) { warnings.push("AI extraction failed, so the built-in catalog matcher was used instead."); console.error(e); }
   } else if (!llmConfigured()) {
     warnings.push("Running without an AI key: only places named in the caption you paste can be recognised, and only for destinations in the built-in catalog.");
