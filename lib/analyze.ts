@@ -95,7 +95,7 @@ export async function analyzeReel(input: { url: string; caption?: string; transc
   let llm: LlmOut | undefined;
   if (llmConfigured() && text.replace(/https?:\S+/g, "").trim().length > 20) {
     try { llm = await llmJSON<LlmOut>(SYSTEM, `Reel text:\n${text.slice(0, 9000)}`); engine = "ai"; }
-    catch (e) { warnings.push("AI extraction failed, so the built-in catalog matcher was used instead."); console.error(e); }
+    catch (e) { warnings.push(`AI extraction failed (${String((e as Error).message).slice(0, 160)}), so the built-in catalog matcher was used instead.`); console.error(e); }
   } else if (!llmConfigured()) {
     warnings.push("Running without an AI key: only places named in the caption you paste can be recognised, and only for destinations in the built-in catalog.");
   }

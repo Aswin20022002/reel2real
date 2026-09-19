@@ -1,7 +1,8 @@
-import { allCatalogPlaces } from "./catalog";
-import { alternativesFor, inr, stops } from "./itinerary";
+import { allCatalogPlaces, getDestination } from "./catalog";
+import { alternativesFor, inr, stops, suggestNearby } from "./itinerary";
 import { balances, memberName, settlementPlan, totalSpent } from "./settle";
-import type { CopilotChip, CopilotReply, Place, Trip } from "./types";
+import { centroid, gmapsPlaceUrl, haversineKm } from "./geo";
+import type { CopilotChip, CopilotOption, CopilotReply, Place, Trip } from "./types";
 
 const GENERIC = new Set(["falls", "fall", "beach", "fort", "temple", "lake", "valley", "village", "river", "park", "national", "museum", "walk", "trek", "stay", "cafe", "café", "boat", "ride", "the", "and", "of", "in", "at", "hill", "hills", "view", "point", "street", "road"]);
 const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length >= 4 && !GENERIC.has(w));
@@ -91,7 +92,24 @@ export function localCopilot(trip: Trip, raw: string): CopilotReply {
     return { reply: `Biggest per-person costs on the plan: ${top.map((p) => `${p.name} (${inr(p.costINR)})`).join(", ")}. Staying in a village homestay and sharing a cab across the group usually saves more than dropping stops.`, chips };
   }
 
-  if (/(hotel|stay|book|cab|train|flight|bus|rental|self.?drive|car)/.test(text)) {
+  const wantsList = /(list|suggest|recommend|options|best|good|top|where (to|can)|what (else|should)|find|show me|any )/.test(text);
+  if (/(hotel|stay|homestay|resort|accommodation|sleep|lodg)/.test(text) && (wantsList || !/book/.test(text))) {
+    const c = centroid(stops(trip));
+    const stays = (getDestination(trip.destinationKey)?.stays ?? []).slice().sort((a, b) => haversineKm(c, a) - haversineKm(c, b));
+    const options: CopilotOption[] = stays.slice(0, 5).map((s) => ({ name: s.name, kind: "stay", area: s.area, note: s.description, price: s.nightINR ? `about ${inr(s.nightINR)} per room per night` : undefined, lat: s.lat, lng: s.lng, mapsUrl: gmapsPlaceUrl(s), verified: false }));
+    return options.length
+      ? { reply: "These are the kinds of stays that suit your route. With an AI key and Google Places connected, I'll name specific hotels with live ratings. Meanwhile, compare real prices on MakeMyTrip.", options }
+      : { reply: "I don't have stay data for this destination offline. Open the Book tab to search stays on MakeMyTrip." };
+  }
+  if (/(restaurant|eat|food|cafe|café|lunch|dinner|breakfast|snack)/.test(text) && wantsList) {
+    const foods = suggestNearby(trip, 20).filter((p) => p.category === "food").slice(0, 4);
+    if (foods.length) return { reply: "Food stops near your route:", options: foods.map((f) => ({ name: f.name, kind: "food" as const, area: f.area, note: f.description, price: f.costINR ? `about ${inr(f.costINR)} per person` : undefined, lat: f.lat, lng: f.lng, mapsUrl: gmapsPlaceUrl(f), verified: false })) };
+  }
+  if (/(what else|things to do|suggest|recommend|other places|more places|nearby)/.test(text)) {
+    const s = suggestNearby(trip, 5);
+    if (s.length) return { reply: "Nearby places you could add:", options: s.map((f) => ({ name: f.name, kind: "sight" as const, area: f.area, note: f.description, price: f.costINR ? `about ${inr(f.costINR)} per person` : "free", lat: f.lat, lng: f.lng, mapsUrl: gmapsPlaceUrl(f), verified: false })) };
+  }
+  if (/(book|cab|train|flight|bus|rental|self.?drive|car)/.test(text)) {
     return { reply: "Open the Book tab: it lists ways to reach the destination, stay options near each day's route, and cab or self-drive costs for the group. Anything you mark as booked shows up for everyone." };
   }
   if (/(weather|pack|carry|wear|jacket|umbrella)/.test(text)) {

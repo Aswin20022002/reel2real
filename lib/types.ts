@@ -156,10 +156,27 @@ export interface CopilotChip {
   label: string;
   action: Action;
 }
+export interface CopilotOption {
+  name: string;
+  kind: "stay" | "food" | "sight" | "shopping" | "other";
+  area?: string;
+  note?: string;
+  rating?: number;
+  ratingCount?: number;
+  price?: string;
+  lat?: number;
+  lng?: number;
+  mapsUrl?: string;
+  /** false when the option comes from the model's own knowledge and hasn't been checked against a places database */
+  verified?: boolean;
+}
 export interface CopilotReply {
   reply: string;
   chips?: CopilotChip[];
   actions?: Action[];
+  options?: CopilotOption[];
+  /** set when the AI call failed and the offline rules answered instead */
+  fallbackReason?: string;
 }
 
 export interface DayWeather {
