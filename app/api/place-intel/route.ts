@@ -61,6 +61,7 @@ export async function GET(req: Request) {
   const wiki = u.searchParams.get("wiki") ?? "";
   const key = process.env.GOOGLE_PLACES_API_KEY;
   const out: PlaceIntel = { mode: "basic", photos: [], reviews: [] };
+  let googleError = "";
 
   if (key && name) {
     try {
@@ -84,9 +85,14 @@ export async function GET(req: Request) {
           out.mapsUri = pl.googleMapsUri;
           out.photos = (pl.photos ?? []).slice(0, 6).map((p: { name: string; authorAttributions?: { displayName?: string }[] }) => ({ url: `/api/place-photo?name=${encodeURIComponent(p.name)}`, credit: p.authorAttributions?.[0]?.displayName }));
           out.reviews = (pl.reviews ?? []).slice(0, 5).map((v: { text?: { text?: string }; relativePublishTimeDescription?: string; rating?: number }) => ({ text: (v.text?.text ?? "").slice(0, 240), when: v.relativePublishTimeDescription ?? "", rating: v.rating }));
-        }
+        } else googleError = "Google found no matching place";
+      } else {
+        const t = (await r.text()).slice(0, 400);
+        let msg = t;
+        try { msg = JSON.parse(t).error?.message ?? t; } catch { /* keep raw text */ }
+        googleError = `${r.status}: ${String(msg).slice(0, 220)}`;
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); googleError = (e as Error).message; }
   }
 
   const recent = await flickrRecent(name, lat, lng);
@@ -97,6 +103,6 @@ export async function GET(req: Request) {
     if (w.img) out.photos.push({ url: w.img, credit: "Wikipedia / Wikimedia Commons" });
     out.summary = w.extract;
   }
-  if (out.mode === "basic") out.note = "Live status, ratings, recent reviews and traveller photos switch on when a Google Places API key is set.";
+  if (out.mode === "basic") out.note = key ? `Google Places is set up but didn't return data (${googleError || "unknown reason"}).` : "Live status, ratings, recent reviews and traveller photos switch on when a Google Places API key is set.";
   return NextResponse.json(out);
 }
