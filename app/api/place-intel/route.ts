@@ -11,6 +11,36 @@ export interface PlaceIntel {
   reviews: { text: string; when: string; rating?: number }[];
   summary?: string;
   note?: string;
+  /** recent public photos taken at this spot (Flickr), newest first */
+  recent?: { url: string; credit: string; link: string; uploaded: string }[];
+  recentSource?: string;
+}
+
+interface FlickrPhoto { id: string; owner: string; ownername?: string; url_m?: string; dateupload?: string; title?: string }
+
+// Recent public, geotagged photos. Free Flickr API key required (FLICKR_API_KEY). Always credit the owner and link back.
+async function flickrRecent(name: string, lat: number, lng: number): Promise<NonNullable<PlaceIntel["recent"]>> {
+  const key = process.env.FLICKR_API_KEY;
+  if (!key || !Number.isFinite(lat) || !Number.isFinite(lng)) return [];
+  const run = async (text?: string) => {
+    const q = new URLSearchParams({
+      method: "flickr.photos.search", api_key: key, lat: String(lat), lon: String(lng), radius: "1.5", radius_units: "km",
+      sort: "date-posted-desc", per_page: "8", media: "photos", content_type: "1", safe_search: "1", extras: "date_upload,owner_name,url_m",
+      format: "json", nojsoncallback: "1", ...(text ? { text } : {}),
+    });
+    const r = await fetch(`https://api.flickr.com/services/rest/?${q}`, { next: { revalidate: 1800 } });
+    if (!r.ok) return [] as FlickrPhoto[];
+    const j = await r.json();
+    return (j.photos?.photo ?? []) as FlickrPhoto[];
+  };
+  try {
+    let photos = await run(name.split(/[,(]/)[0].trim());
+    if (photos.length < 3) photos = await run();
+    return photos.filter((p) => p.url_m).slice(0, 8).map((p) => ({
+      url: p.url_m as string, credit: p.ownername ?? "Flickr user", link: `https://www.flickr.com/photos/${p.owner}/${p.id}`,
+      uploaded: p.dateupload ? new Date(Number(p.dateupload) * 1000).toISOString() : "",
+    }));
+  } catch { return []; }
 }
 
 async function wikiInfo(title: string): Promise<{ img?: string; extract?: string }> {
@@ -58,6 +88,9 @@ export async function GET(req: Request) {
       }
     } catch (e) { console.error(e); }
   }
+
+  const recent = await flickrRecent(name, lat, lng);
+  if (recent.length) { out.recent = recent; out.recentSource = "Flickr"; }
 
   if (!out.photos.length && (wiki || name)) {
     const w = await wikiInfo(wiki || name);
