@@ -69,7 +69,8 @@ Return ONLY JSON: {"destination": string, "title": string (max 7 words), "summar
 "places": [{"name": string, "category": "sight|nature|food|adventure|culture|stay|shopping|wellness", "area": string (town/district), "lat": number, "lng": number,
 "description": string (one sentence), "durationMin": number, "costINR": number (typical per-person spend, 0 if free), "evidence": string (short phrase from the text that mentions it)}]}.
 Rules: only include real, specific places that the text names or clearly implies; never invent places. If the text names a generic thing like "a cafe in Sohra", include it as a food place with that area.
-Keep the order the creator mentions. Use best-known real coordinates. If no destination can be found return {"places": []}.`;
+Keep the order the creator mentions. Use best-known real coordinates.
+LANGUAGE: the text may be in Hindi, Hinglish or another Indian language. Understand it, but ALWAYS write place names in their standard, well-known English form as they appear on Google Maps (for example 'Trimbakeshwar Jyotirlinga Temple', not a spelling of the spoken word), and write descriptions in English. If the creator describes a famous place without naming it (for example a temple, fort or waterfall), identify it if you are confident, and otherwise leave it out. Put the town or district in 'area'. If no destination can be found return {"places": []}.`;
 
 export async function analyzeReel(input: { url: string; caption?: string; transcript?: string }): Promise<Analysis> {
   const url = input.url.trim();
