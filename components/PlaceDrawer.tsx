@@ -8,7 +8,15 @@ import { CatChip, Modal } from "./ui";
 
 interface Intel {
   mode: "live" | "basic"; status?: string; rating?: number; ratingCount?: number; hours?: string[]; mapsUri?: string;
-  photos: { url: string; credit?: string }[]; reviews: { text: string; when: string; rating?: number }[]; summary?: string; note?: string;
+  recent?: { url: string; credit: string; link: string; uploaded: string }[]; photos: { url: string; credit?: string }[]; reviews: { text: string; when: string; rating?: number }[]; summary?: string; note?: string;
+}
+
+function ago(iso: string): string {
+  const d = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 86400000));
+  if (d < 1) return "today";
+  if (d < 31) return `${d} day${d > 1 ? "s" : ""} ago`;
+  if (d < 365) return `${Math.round(d / 30)} month${Math.round(d / 30) > 1 ? "s" : ""} ago`;
+  return `${Math.round(d / 365)} yr ago`;
 }
 
 export default function PlaceDrawer({ place, trip, onClose }: { place: Place; trip: Trip; onClose: () => void }) {
@@ -39,7 +47,23 @@ export default function PlaceDrawer({ place, trip, onClose }: { place: Place; tr
           <div className="col-span-full flex h-28 items-center justify-center gap-2 rounded-lg bg-ink-50 text-sm text-ink-500"><ImageOff size={16} /> {failed ? "Photos unavailable" : intel ? "No photo found yet" : "Loading photos..."}</div>
         )}
       </div>
-      {intel?.photos[0]?.credit && <p className="mt-1 text-[11px] text-ink-500">Photo: {intel.photos[0].credit}</p>}
+      {intel?.photos[0]?.credit && <p className="mt-1 text-[11px] text-ink-500">{intel.mode === "live" ? "Traveller photos from Google Maps (not sorted by date)" : "Photo"}: {intel.photos[0].credit}</p>}
+
+      {intel?.recent && intel.recent.length > 0 && (
+        <div className="mt-4">
+          <h3 className="font-display text-lg font-bold">Recent photos from travellers</h3>
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {intel.recent.map((r, i) => (
+              <a key={i} href={r.link} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border border-ink-100">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={r.url} alt={`${place.name}, photo by ${r.credit}`} className="h-24 w-full object-cover" loading="lazy" />
+                <div className="px-1.5 py-1 text-[10px] leading-tight text-ink-500"><div className="truncate">{r.credit}</div>{r.uploaded && <div>{ago(r.uploaded)}</div>}</div>
+              </a>
+            ))}
+          </div>
+          <p className="mt-1 text-[11px] text-ink-500">Public photos taken within about 1.5 km, newest first, from Flickr. Tap a photo to see it and its owner on Flickr.</p>
+        </div>
+      )}
 
       <h3 className="mt-5 font-display text-lg font-bold">Reality check for {fmtDate(dayDate(trip, Math.max(0, di)))}</h3>
       <div className="mt-2 space-y-2 text-sm">
@@ -66,7 +90,8 @@ export default function PlaceDrawer({ place, trip, onClose }: { place: Place; tr
         <a className="btn-ghost btn-sm" target="_blank" rel="noreferrer" href={`https://www.instagram.com/explore/tags/${tag}/`}><Instagram size={14} /> Recent posts on Instagram</a>
         <a className="btn-ghost btn-sm" target="_blank" rel="noreferrer" href={`https://www.youtube.com/results?search_query=${encodeURIComponent(place.name + " " + place.area + " vlog")}`}><Youtube size={14} /> Recent vlogs</a>
       </div>
-      <p className="mt-3 text-xs text-ink-500">Typical spend {place.costINR ? inr(place.costINR) + " per person" : "free or negligible"} · about {place.durationMin >= 60 ? `${Math.round((place.durationMin / 60) * 10) / 10} h` : `${place.durationMin} min`} on site. Indicative, so confirm locally.</p>
+      <p className="mt-3 text-[11px] text-ink-500">Instagram doesn't let other apps pull its photos, so the button above opens Instagram's own page for this place.</p>
+      <p className="mt-2 text-xs text-ink-500">Typical spend {place.costINR ? inr(place.costINR) + " per person" : "free or negligible"} · about {place.durationMin >= 60 ? `${Math.round((place.durationMin / 60) * 10) / 10} h` : `${place.durationMin} min`} on site. Indicative, so confirm locally.</p>
     </Modal>
   );
 }
