@@ -10,6 +10,13 @@ import type { Analysis, Pace } from "@/lib/types";
 
 const STEPS = ["Reading the reel", "Finding the places", "Locating them on the map", "Routing the days", "Checking weather and alternatives"];
 
+async function readJson(r: Response): Promise<{ error?: string; [k: string]: unknown }> {
+  const t = await r.text();
+  try { return JSON.parse(t); } catch {
+    return { error: r.status === 413 ? "That upload was too large for the server. Please try again." : `The server returned an unexpected reply (${r.status}). Please try again.` };
+  }
+}
+
 export default function ReelInput({ prefill }: { prefill?: { url: string; caption?: string } }) {
   const router = useRouter();
   const [url, setUrl] = useState(prefill?.url ?? "");
@@ -36,7 +43,7 @@ export default function ReelInput({ prefill }: { prefill?: { url: string; captio
   async function post(blob: Blob, name: string): Promise<string> {
     const fd = new FormData(); fd.append("file", blob, name);
     const r = await fetch("/api/transcribe", { method: "POST", body: fd });
-    const j = await r.json();
+    const j = await readJson(r);
     if (!r.ok) throw new Error(j.error || "Transcription failed");
     return String(j.transcript ?? "");
   }
@@ -76,7 +83,7 @@ export default function ReelInput({ prefill }: { prefill?: { url: string; captio
     timer.current = setInterval(() => setStep((s) => Math.min(s + 1, STEPS.length - 1)), 1300);
     try {
       const r = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: url.trim(), caption, transcript }) });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j.error || "Something went wrong");
       const a = j.analysis as Analysis;
       setWarn(a.warnings);
